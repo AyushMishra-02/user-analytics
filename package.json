@@ -1,0 +1,24 @@
+{
+  "name": "user-analytics-app",
+  "version": "1.0.0",
+  "description": "Full-stack user session tracking, interaction analytics, user journey visualization, and click heatmaps for CausalFunnel",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "start:backend": "npm --prefix backend start",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "seed": "npm --prefix backend run seed"
+  },
+  "keywords": [
+    "user-analytics",
+    "session-tracking",
+    "heatmap",
+    "user-journey",
+    "causalfunnel",
+    "mern",
+    "full-stack"
+  ],
+  "author": "Ayush Mishra",
+  "license": "MIT"
+}

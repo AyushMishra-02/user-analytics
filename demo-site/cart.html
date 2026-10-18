@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura Store - Shopping Cart & Checkout</title>
+  <meta name="description" content="View items in your bag and proceed to checkout.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        Aura Commerce
+      </a>
+      <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="products.html">Catalog</a>
+        <a href="cart.html" class="active">Cart</a>
+      </nav>
+      <div class="nav-actions">
+        <a href="cart.html" class="cart-btn">
+          🛒 Cart
+          <span class="cart-badge" id="cartBadge">0</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div style="margin-bottom: 1.5rem;">
+      <h1 style="font-size: 2.2rem; font-weight: 800; margin-bottom: 0.5rem;">Your Shopping Bag</h1>
+      <p style="color: var(--text-muted);">Review selected items or proceed to simulated checkout.</p>
+    </div>
+
+    <div class="cart-layout">
+      <!-- Items column -->
+      <div>
+        <div class="cart-items" id="cartItemsList">
+          <!-- Dynamically populated or default fallback -->
+        </div>
+        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+          <a href="products.html" class="btn-secondary" id="continueShoppingBtn">&larr; Continue Shopping</a>
+          <button class="btn-secondary" id="clearCartBtn" onclick="clearCart()">Clear Bag</button>
+        </div>
+      </div>
+
+      <!-- Order Summary column -->
+      <aside class="cart-summary">
+        <h3 style="font-size: 1.3rem; margin-bottom: 1.25rem;">Order Summary</h3>
+        <div class="summary-row">
+          <span>Subtotal</span>
+          <span id="subtotalPrice">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Standard Shipping</span>
+          <span>$9.99</span>
+        </div>
+        <div class="summary-row">
+          <span>Estimated Taxes</span>
+          <span>$0.00</span>
+        </div>
+        <div class="summary-row total">
+          <span>Total</span>
+          <span id="totalPrice">$0.00</span>
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <button class="btn-primary" id="checkoutBtn" onclick="showToast('Order confirmed! Tracking event recorded.')">
+            Complete Purchase &rarr;
+          </button>
+          <button class="btn-secondary" id="applyPromoBtn" onclick="showToast('Promo code CAUSAL20 applied! 20% discount.')">
+            Apply Promo Code
+          </button>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- CausalFunnel Analytics Tracker Script -->
+  <script src="/tracker.js" data-endpoint="http://localhost:5000/api/events"></script>
+  <script src="demo.js"></script>
+</body>
+</html>
