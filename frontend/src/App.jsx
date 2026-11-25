@@ -6,6 +6,7 @@ import SessionTimelineModal from './components/SessionTimelineModal';
 import HeatmapViewer from './components/HeatmapViewer';
 import LiveEventFeed from './components/LiveEventFeed';
 import TrackerCodeSnippet from './components/TrackerCodeSnippet';
+import ResearchInsights from './components/ResearchInsights';
 import AuthPage from './components/AuthPage';
 import SiteManagerModal from './components/SiteManagerModal';
 import { useAuth } from './context/AuthContext';
@@ -214,6 +215,8 @@ export default function App() {
             )}
 
             {activeTab === 'live' && <LiveEventFeed siteId={activeSite.siteId} />}
+
+            {activeTab === 'research' && <ResearchInsights siteId={activeSite.siteId} />}
 
             {activeTab === 'setup' && <TrackerCodeSnippet />}
           </>

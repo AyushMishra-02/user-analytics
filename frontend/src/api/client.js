@@ -177,3 +177,13 @@ export async function downloadCsvExport(siteId) {
   a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export async function fetchResearchInsights(siteId, { startDate, endDate } = {}) {
+  const params = new URLSearchParams({ siteId });
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  const res = await fetch(`${API_BASE}/analytics/research?${params.toString()}`, {
+    headers: getHeaders(),
+  });
+  return handleResponse(res, 'Failed to fetch research insights');
+}

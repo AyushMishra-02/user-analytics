@@ -1,5 +1,6 @@
 const Event = require('../models/Event');
 const Session = require('../models/Session');
+const { computeMarkovAnalysis, computeSessionAnomalies } = require('../utils/markovEngine');
 
 // Helper to build date range filter
 const buildDateFilter = (startDate, endDate, field = 'timestamp') => {
@@ -298,6 +299,52 @@ exports.exportAnalyticsData = async (req, res) => {
   } catch (error) {
     console.error('Error exporting data:', error);
     return res.status(500).json({ error: 'Failed to export analytics data' });
+  }
+};
+
+// @desc    Research Lab: Absorbing Markov Chain & Shannon Entropy Anomaly Engine
+// @route   GET /api/analytics/research?siteId=...
+exports.getResearchInsights = async (req, res) => {
+  try {
+    const siteId = req.site.siteId;
+    const { startDate, endDate } = req.query;
+
+    const filter = {
+      siteId,
+      ...buildDateFilter(startDate, endDate, 'timestamp'),
+    };
+
+    const events = await Event.find(filter, {
+      sessionId: 1,
+      eventType: 1,
+      pageUrl: 1,
+      timestamp: 1,
+    })
+      .sort({ timestamp: 1 })
+      .limit(5000);
+
+    const sessionMap = new Map();
+    for (const ev of events) {
+      if (!sessionMap.has(ev.sessionId)) {
+        sessionMap.set(ev.sessionId, []);
+      }
+      sessionMap.get(ev.sessionId).push(ev);
+    }
+
+    const markov = computeMarkovAnalysis(sessionMap);
+    const anomalies = computeSessionAnomalies(sessionMap);
+
+    return res.json({
+      success: true,
+      markov,
+      anomalies,
+    });
+  } catch (error) {
+    console.error('Error computing research insights:', error);
+    return res.status(500).json({
+      error: 'Failed to compute research insights',
+      details: error.message,
+    });
   }
 };
 

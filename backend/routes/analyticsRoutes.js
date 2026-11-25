@@ -5,6 +5,7 @@ const {
   getTrackedPages,
   getOverviewStats,
   exportAnalyticsData,
+  getResearchInsights,
   resetAllData,
 } = require('../controllers/analyticsController');
 const { seedDatabase } = require('../seed/seedData');
@@ -23,6 +24,9 @@ router.get('/overview', getOverviewStats);
 
 // GET /api/analytics/export?siteId=...&format=csv|json
 router.get('/export', exportAnalyticsData);
+
+// GET /api/analytics/research?siteId=...
+router.get('/research', getResearchInsights);
 
 // POST /api/analytics/seed?siteId=...
 router.post('/seed', async (req, res) => {

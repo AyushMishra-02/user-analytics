@@ -13,6 +13,7 @@ import {
   Download,
   LogOut,
   Plus,
+  FlaskConical,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BACKEND_ORIGIN } from '../api/client';
@@ -112,6 +113,14 @@ export default function Navbar({
           >
             <Radio size={16} />
             <span>Live</span>
+          </button>
+
+          <button
+            className={`nav-tab-btn ${activeTab === 'research' ? 'active' : ''}`}
+            onClick={() => setActiveTab('research')}
+          >
+            <FlaskConical size={16} />
+            <span>Research Lab</span>
           </button>
 
           <button
