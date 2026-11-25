@@ -83,7 +83,7 @@ export default function SiteManagerModal({ onClose, onNotify }) {
               <input
                 type="text"
                 required
-                placeholder="Site Name (e.g. My Portfolio)"
+                placeholder="Site Name (e.g. Portfolio Site)"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="search-input"
@@ -91,7 +91,7 @@ export default function SiteManagerModal({ onClose, onNotify }) {
               <input
                 type="text"
                 required
-                placeholder="Domain (e.g. mywebsite.com)"
+                placeholder="Domain (e.g. mysite.com)"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
                 className="search-input"
