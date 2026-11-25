@@ -102,7 +102,7 @@ export default function AuthPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Ayush Mishra"
+                  placeholder="Your full name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="search-input"

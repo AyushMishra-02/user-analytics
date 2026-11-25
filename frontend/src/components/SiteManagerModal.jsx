@@ -91,7 +91,7 @@ export default function SiteManagerModal({ onClose, onNotify }) {
               <input
                 type="text"
                 required
-                placeholder="Domain (e.g. ayush.dev)"
+                placeholder="Domain (e.g. mywebsite.com)"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
                 className="search-input"
