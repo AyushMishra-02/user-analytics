@@ -3,6 +3,23 @@
 let cart = JSON.parse(localStorage.getItem('cf_demo_cart') || '[]');
 let eventCounter = 0;
 
+// Detect siteId from URL query (?siteId=...) or localStorage so multi-tenant demo works seamlessly
+(function initDemoTracker() {
+  const params = new URLSearchParams(window.location.search);
+  const urlSiteId = params.get('siteId');
+  if (urlSiteId) {
+    localStorage.setItem('cf_demo_site_id', urlSiteId);
+  }
+  const activeSiteId = urlSiteId || localStorage.getItem('cf_demo_site_id');
+  if (activeSiteId && window.CausalTracker && !window.CausalTracker.getSiteId()) {
+    window.CausalTracker.init({
+      siteId: activeSiteId,
+      endpoint: window.location.origin + '/api/events',
+      debug: true,
+    });
+  }
+})();
+
 function updateCartBadge() {
   const badge = document.getElementById('cartBadge');
   if (badge) {

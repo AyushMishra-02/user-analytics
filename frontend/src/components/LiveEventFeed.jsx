@@ -1,36 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { Radio, Eye, MousePointerClick, Pause, Play, RefreshCw, Zap } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Eye, MousePointerClick, Pause, Play, RefreshCw, AlertTriangle, ArrowDownCircle } from 'lucide-react';
 import { fetchRecentEvents } from '../api/client';
 
-export default function LiveEventFeed() {
+export default function LiveEventFeed({ siteId }) {
   const [events, setEvents] = useState([]);
   const [isLive, setIsLive] = useState(true);
   const [loading, setLoading] = useState(true);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
+    if (!siteId) return;
     try {
-      const data = await fetchRecentEvents(40);
+      const data = await fetchRecentEvents(siteId, 40);
       setEvents(data.events || []);
       setLoading(false);
     } catch (err) {
       console.error('Failed to load recent events:', err);
+      setLoading(false);
     }
-  };
+  }, [siteId]);
 
   useEffect(() => {
+    setLoading(true);
     loadEvents();
-  }, []);
+  }, [loadEvents]);
 
   // Polling loop when isLive is true
   useEffect(() => {
-    if (!isLive) return;
+    if (!isLive || !siteId) return;
 
     const interval = setInterval(() => {
       loadEvents();
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [isLive]);
+  }, [isLive, siteId, loadEvents]);
 
   return (
     <div className="card">
@@ -83,6 +86,8 @@ export default function LiveEventFeed() {
             <tbody>
               {events.map((ev, i) => {
                 const isClick = ev.eventType === 'click';
+                const isRageClick = ev.eventType === 'rage_click';
+                const isScroll = ev.eventType === 'scroll';
                 const shortUrl = ev.pageUrl?.replace(/^https?:\/\/[^/]+/, '') || ev.pageUrl;
 
                 return (
@@ -94,10 +99,20 @@ export default function LiveEventFeed() {
                     </td>
 
                     <td>
-                      {isClick ? (
+                      {isRageClick ? (
+                        <span className="badge badge-amber" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+                          <AlertTriangle size={12} />
+                          RAGE_CLICK
+                        </span>
+                      ) : isClick ? (
                         <span className="badge badge-amber" style={{ background: 'rgba(244, 63, 94, 0.15)', color: '#fb7185', borderColor: 'rgba(244, 63, 94, 0.3)' }}>
                           <MousePointerClick size={12} />
                           CLICK
+                        </span>
+                      ) : isScroll ? (
+                        <span className="badge badge-purple">
+                          <ArrowDownCircle size={12} />
+                          SCROLL
                         </span>
                       ) : (
                         <span className="badge badge-emerald">
@@ -120,10 +135,14 @@ export default function LiveEventFeed() {
                     </td>
 
                     <td>
-                      {isClick ? (
+                      {isClick || isRageClick ? (
                         <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
                           <span className="timeline-coord-tag">({ev.clickX}, {ev.clickY})</span>{' '}
                           {ev.elementText ? `"${ev.elementText.slice(0, 30)}"` : `<${ev.elementTag || 'div'}>`}
+                        </span>
+                      ) : isScroll ? (
+                        <span style={{ fontSize: '0.8rem', color: '#c084fc' }}>
+                          Scrolled to {ev.metadata?.scrollDepthPercent || 0}% depth
                         </span>
                       ) : (
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>

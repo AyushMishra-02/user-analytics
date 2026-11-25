@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const EventSchema = new mongoose.Schema(
   {
+    siteId: {
+      type: String,
+      required: true,
+      index: true,
+      trim: true,
+    },
     sessionId: {
       type: String,
       required: true,
@@ -11,7 +17,7 @@ const EventSchema = new mongoose.Schema(
     eventType: {
       type: String,
       required: true,
-      enum: ['page_view', 'click', 'scroll', 'custom'],
+      enum: ['page_view', 'click', 'scroll', 'rage_click', 'custom'],
       index: true,
     },
     pageUrl: {
@@ -78,9 +84,11 @@ const EventSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for querying events by session ordered by timestamp
-EventSchema.index({ sessionId: 1, timestamp: 1 });
-// Compound index for querying heatmap clicks by pageUrl
-EventSchema.index({ pageUrl: 1, eventType: 1 });
+// Compound index for querying events by site + session ordered by timestamp
+EventSchema.index({ siteId: 1, sessionId: 1, timestamp: 1 });
+// Compound index for querying heatmap clicks by site + pageUrl
+EventSchema.index({ siteId: 1, pageUrl: 1, eventType: 1 });
+// Index for recent events by site
+EventSchema.index({ siteId: 1, timestamp: -1 });
 
 module.exports = mongoose.model('Event', EventSchema);

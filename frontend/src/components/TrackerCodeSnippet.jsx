@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
-import { Copy, Check, Terminal, ExternalLink, ShieldCheck, Zap } from 'lucide-react';
+import { Copy, Check, Terminal, ShieldCheck, Zap, AlertTriangle, ArrowDownCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { BACKEND_ORIGIN } from '../api/client';
 
 export default function TrackerCodeSnippet() {
+  const { activeSite } = useAuth();
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [copiedNpm, setCopiedNpm] = useState(false);
 
-  const scriptTagCode = `<!-- CausalFunnel Analytics Tracker -->
+  const siteId = activeSite?.siteId || 'YOUR_SITE_ID';
+
+  const scriptTagCode = `<!-- CausalFunnel Analytics Tracker (${activeSite?.name || 'Website'}) -->
 <script
-  src="http://localhost:5000/tracker.js"
-  data-endpoint="http://localhost:5000/api/events"
+  src="${BACKEND_ORIGIN}/tracker.js"
+  data-site-id="${siteId}"
+  data-respect-dnt="true"
   async>
 </script>`;
 
   const customEventCode = `// Optional: Programmatic custom tracking
-window.CausalTracker.track('click', {
-  clickX: 450,
-  clickY: 320,
+window.CausalTracker.track('custom', {
   elementTag: 'BUTTON',
   elementText: 'Complete Purchase',
   metadata: { orderId: 'ord_99182', amount: 349.00 }
@@ -39,14 +43,14 @@ window.CausalTracker.track('click', {
         <div className="card-header">
           <h2 className="card-title">
             <Terminal size={18} color="#3b82f6" />
-            <span>Client Tracking Script Installation</span>
+            <span>Install Tracker for {activeSite?.name || 'Your Website'}</span>
           </h2>
-          <span className="badge badge-emerald">Zero Dependency</span>
+          <span className="badge badge-emerald">Site ID: {siteId}</span>
         </div>
 
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-          Add this script snippet to the <code>&lt;head&gt;</code> or bottom of <code>&lt;body&gt;</code> on any webpage.
-          It automatically tracks <strong>page views</strong>, <strong>clicks with coordinates</strong>, and persists the <strong>session ID</strong> in <code>localStorage</code> (with cookie fallback).
+          Paste this snippet into the <code>&lt;head&gt;</code> or <code>&lt;body&gt;</code> of any website (HTML, React, Next.js, WordPress, portfolio).
+          Events are automatically isolated to <strong>{activeSite?.domain || 'your domain'}</strong>.
         </p>
 
         <div style={{ position: 'relative', background: '#0b1120', border: '1px solid var(--border-medium)', borderRadius: '10px', padding: '1.25rem' }}>
@@ -65,34 +69,44 @@ window.CausalTracker.track('click', {
       </div>
 
       {/* Feature Breakdown Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
         <div className="card">
-          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.65rem' }}>
             <Zap size={16} color="#fbbf24" />
-            Automatic Click & Coordinate Capture
+            Click & Heatmap Capture
           </h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Listens to global clicks, captures exact <code>pageX, pageY</code> coordinates, element tags (<code>BUTTON</code>, <code>A</code>, <code>INPUT</code>), element inner text, and viewport dimensions for responsive heatmap normalization.
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+            Captures exact <code>pageX, pageY</code> coordinates, element tags, inner text, and viewport size for responsive thermal heatmaps.
           </p>
         </div>
 
         <div className="card">
-          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.65rem' }}>
+            <ArrowDownCircle size={16} color="#38bdf8" />
+            Scroll Depth Milestones
+          </h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+            Automatically logs 25%, 50%, 75%, and 100% scroll milestones on every page to measure real content engagement.
+          </p>
+        </div>
+
+        <div className="card">
+          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.65rem' }}>
+            <AlertTriangle size={16} color="#fb7185" />
+            Rage Click Detection
+          </h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+            Detects frustration bursts (3+ rapid clicks within 800ms in a 40px radius) and flags broken or confusing UI elements.
+          </p>
+        </div>
+
+        <div className="card">
+          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.65rem' }}>
             <ShieldCheck size={16} color="#10b981" />
-            Resilient Session Management
+            Privacy-First & Resilient
           </h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Generates UUID v4 session identifiers stored in <code>localStorage</code> with graceful fallback to <code>document.cookie</code>. Maintains session continuity across tabs and page reloads.
-          </p>
-        </div>
-
-        <div className="card">
-          <h3 className="card-title" style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
-            <Terminal size={16} color="#8b5cf6" />
-            Beacon & Batch Delivery
-          </h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Batches events to optimize network bandwidth and uses <code>navigator.sendBeacon()</code> to guarantee event delivery even when a user suddenly closes or leaves the page.
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+            Respects browser <code>Do-Not-Track</code> headers, anonymizes visitor IPs on ingestion, and uses <code>sendBeacon()</code> for zero data loss.
           </p>
         </div>
       </div>
@@ -101,7 +115,7 @@ window.CausalTracker.track('click', {
       <div className="card">
         <div className="card-header">
           <h3 className="card-title" style={{ fontSize: '1rem' }}>
-            Programmatic Tracking API
+            Programmatic Custom Event API
           </h3>
           <button
             className="btn btn-secondary btn-sm"

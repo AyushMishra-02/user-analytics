@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Eye, MousePointerClick, Clock, Globe, Laptop, ArrowRight, Layers, Sparkles } from 'lucide-react';
+import { X, Eye, MousePointerClick, Clock, Globe, AlertTriangle, ArrowDownCircle } from 'lucide-react';
 
 export default function SessionTimelineModal({ sessionData, onClose, isLoading }) {
   // Close on Escape key
@@ -78,6 +78,8 @@ export default function SessionTimelineModal({ sessionData, onClose, isLoading }
 
               {timeline.map((event) => {
                 const isClick = event.eventType === 'click';
+                const isRageClick = event.eventType === 'rage_click';
+                const isScroll = event.eventType === 'scroll';
                 const isPageView = event.eventType === 'page_view';
 
                 return (
@@ -86,8 +88,8 @@ export default function SessionTimelineModal({ sessionData, onClose, isLoading }
                     <div
                       className="timeline-node"
                       style={{
-                        borderColor: isClick ? '#f43f5e' : '#06b6d4',
-                        color: isClick ? '#fb7185' : '#22d3ee',
+                        borderColor: isRageClick ? '#ef4444' : isClick ? '#f43f5e' : isScroll ? '#8b5cf6' : '#06b6d4',
+                        color: isRageClick ? '#fca5a5' : isClick ? '#fb7185' : isScroll ? '#c084fc' : '#22d3ee',
                       }}
                     >
                       {event.stepNumber}
@@ -101,6 +103,16 @@ export default function SessionTimelineModal({ sessionData, onClose, isLoading }
                             <span className="badge badge-blue">
                               <Eye size={12} />
                               PAGE_VIEW
+                            </span>
+                          ) : isRageClick ? (
+                            <span className="badge badge-amber" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+                              <AlertTriangle size={12} />
+                              RAGE_CLICK
+                            </span>
+                          ) : isScroll ? (
+                            <span className="badge badge-purple">
+                              <ArrowDownCircle size={12} />
+                              SCROLL ({event.metadata?.scrollDepthPercent || 0}%)
                             </span>
                           ) : (
                             <span className="badge badge-amber" style={{ background: 'rgba(244, 63, 94, 0.15)', color: '#fb7185', borderColor: 'rgba(244, 63, 94, 0.3)' }}>
@@ -123,8 +135,8 @@ export default function SessionTimelineModal({ sessionData, onClose, isLoading }
                         <span style={{ color: '#e2e8f0', fontWeight: '500' }}>{event.pageUrl}</span>
                       </div>
 
-                      {/* Click Metadata (if click) */}
-                      {isClick && (
+                      {/* Click Metadata (if click or rage_click) */}
+                      {(isClick || isRageClick) && (
                         <div className="timeline-details">
                           <div>
                             Coordinates: <span className="timeline-coord-tag">X: {event.clickX}px, Y: {event.clickY}px</span>

@@ -234,10 +234,10 @@ const sampleSessions = [
   },
 ];
 
-async function seedDatabase() {
-  console.log('Clearing existing events and sessions for clean seed...');
-  await Event.deleteMany({});
-  await Session.deleteMany({});
+async function seedDatabase(siteId = 'demo_site_default') {
+  console.log(`Clearing existing events and sessions for site ${siteId}...`);
+  await Event.deleteMany({ siteId });
+  await Session.deleteMany({ siteId });
 
   const now = Date.now();
   let totalEventsCreated = 0;
@@ -259,6 +259,7 @@ async function seedDatabase() {
       if (step.type === 'click') clicks++;
 
       eventDocs.push({
+        siteId,
         sessionId: item.sessionId,
         eventType: step.type,
         pageUrl: step.url,
@@ -280,6 +281,7 @@ async function seedDatabase() {
     totalEventsCreated += eventDocs.length;
 
     await Session.create({
+      siteId,
       sessionId: item.sessionId,
       startTime: baseStartTime,
       lastActive: lastActive,
@@ -288,11 +290,11 @@ async function seedDatabase() {
       clicks,
       pagesVisited: Array.from(pagesVisitedSet),
       userAgent: item.userAgent,
-      ip: '127.0.0.1',
+      ip: '127.0.0.0',
     });
   }
 
-  console.log(`Seeded ${sampleSessions.length} sessions with ${totalEventsCreated} events successfully.`);
+  console.log(`Seeded ${sampleSessions.length} sessions with ${totalEventsCreated} events for site ${siteId}.`);
 }
 
 if (require.main === module) {

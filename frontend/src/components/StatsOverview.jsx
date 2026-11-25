@@ -1,12 +1,26 @@
 import React from 'react';
-import { Users, MousePointerClick, Eye, Clock, Layers, TrendingUp, ExternalLink, ArrowRight } from 'lucide-react';
+import {
+  Users,
+  MousePointerClick,
+  Eye,
+  Clock,
+  Layers,
+  TrendingUp,
+  ArrowRight,
+  AlertTriangle,
+  Activity,
+  Calendar,
+} from 'lucide-react';
 
-export default function StatsOverview({ overview, onNavigateTab }) {
+export default function StatsOverview({ overview, onNavigateTab, dateRange, onDateRangeChange }) {
   const kpis = overview?.kpis || {
     totalSessions: 0,
     totalEvents: 0,
     pageViews: 0,
     clicks: 0,
+    rageClicks: 0,
+    scrollEvents: 0,
+    bounceRate: 0,
     avgDurationSeconds: 0,
     avgEventsPerSession: 0,
   };
@@ -22,6 +36,33 @@ export default function StatsOverview({ overview, onNavigateTab }) {
 
   return (
     <div>
+      {/* Date Range Filter Bar */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '1.25rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          <Calendar size={16} color="#38bdf8" />
+          <span>Time Window:</span>
+          {['all', 'today', '7d', '30d'].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className={`btn btn-sm ${dateRange === preset ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => onDateRangeChange(preset)}
+            >
+              {preset === 'all' ? 'All Time' : preset === 'today' ? 'Today' : preset === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* KPI Cards Grid */}
       <div className="kpi-grid">
         <div className="kpi-card">
@@ -34,7 +75,7 @@ export default function StatsOverview({ overview, onNavigateTab }) {
           </div>
           <div className="kpi-value">{kpis.totalSessions}</div>
           <div className="kpi-subtext">
-            <span>Unique browser sessions tracked</span>
+            <span>Bounce Rate: <strong style={{ color: kpis.bounceRate > 60 ? '#fb7185' : '#34d399' }}>{kpis.bounceRate}%</strong></span>
           </div>
         </div>
 
@@ -62,21 +103,24 @@ export default function StatsOverview({ overview, onNavigateTab }) {
           </div>
           <div className="kpi-value">{kpis.pageViews}</div>
           <div className="kpi-subtext">
-            <span>{pageViewRate}% of total activity</span>
+            <span>{kpis.scrollEvents || 0} scroll milestones</span>
           </div>
         </div>
 
         <div className="kpi-card">
           <div className="kpi-glow" style={{ background: '#f43f5e' }}></div>
           <div className="kpi-header">
-            <span className="kpi-title">Clicks Recorded</span>
+            <span className="kpi-title">Clicks & Rage Clicks</span>
             <div className="kpi-icon-wrapper" style={{ background: 'rgba(244, 63, 94, 0.15)', color: '#fb7185' }}>
               <MousePointerClick size={18} />
             </div>
           </div>
           <div className="kpi-value">{kpis.clicks}</div>
           <div className="kpi-subtext">
-            <span>{clickRate}% interaction rate</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <AlertTriangle size={12} color={kpis.rageClicks > 0 ? '#fb7185' : '#64748b'} />
+              {kpis.rageClicks || 0} rage clicks detected
+            </span>
           </div>
         </div>
       </div>
@@ -98,7 +142,6 @@ export default function StatsOverview({ overview, onNavigateTab }) {
               <span style={{ color: '#60a5fa' }}>Page Views: {kpis.pageViews}</span>
               <span style={{ color: '#fb7185' }}>Clicks: {kpis.clicks}</span>
             </div>
-            {/* Visual Progress Bar */}
             <div style={{ height: '12px', background: 'rgba(255,255,255,0.08)', borderRadius: '9999px', overflow: 'hidden', display: 'flex' }}>
               <div
                 style={{
@@ -106,7 +149,6 @@ export default function StatsOverview({ overview, onNavigateTab }) {
                   background: 'linear-gradient(90deg, #3b82f6, #06b6d4)',
                   transition: 'width 0.5s ease',
                 }}
-                title={`Page Views: ${pageViewRate}%`}
               />
               <div
                 style={{
@@ -114,7 +156,6 @@ export default function StatsOverview({ overview, onNavigateTab }) {
                   background: 'linear-gradient(90deg, #f43f5e, #fbbf24)',
                   transition: 'width 0.5s ease',
                 }}
-                title={`Clicks: ${clickRate}%`}
               />
             </div>
           </div>
@@ -132,11 +173,11 @@ export default function StatsOverview({ overview, onNavigateTab }) {
 
             <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '1rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
-                <Layers size={14} />
-                <span>Events / Session</span>
+                <Activity size={14} />
+                <span>Bounce Rate</span>
               </div>
               <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff' }}>
-                {kpis.avgEventsPerSession}
+                {kpis.bounceRate}%
               </div>
             </div>
           </div>
@@ -173,8 +214,8 @@ export default function StatsOverview({ overview, onNavigateTab }) {
 
           {topPages.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
-              <p>No page activity recorded yet.</p>
-              <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Click "Seed Data" or visit the demo store to track events.</p>
+              <p>No page activity recorded yet for this site.</p>
+              <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Click "Seed" or open the Demo Store to track live events.</p>
             </div>
           ) : (
             <div className="table-wrapper">

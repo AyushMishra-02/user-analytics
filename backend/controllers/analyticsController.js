@@ -1,11 +1,25 @@
 const Event = require('../models/Event');
 const Session = require('../models/Session');
 
-// @desc    Fetch click data for a specific page (for heatmap)
-// @route   GET /api/analytics/heatmap
+// Helper to build date range filter
+const buildDateFilter = (startDate, endDate, field = 'timestamp') => {
+  if (!startDate && !endDate) return {};
+  const range = {};
+  if (startDate) range.$gte = new Date(startDate);
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    range.$lte = end;
+  }
+  return { [field]: range };
+};
+
+// @desc    Fetch click data for a specific page & site (for heatmap)
+// @route   GET /api/analytics/heatmap?siteId=...&url=...
 exports.getHeatmapData = async (req, res) => {
   try {
-    const { url } = req.query;
+    const siteId = req.site.siteId;
+    const { url, startDate, endDate } = req.query;
 
     if (!url || url.trim() === '') {
       return res.status(400).json({ error: 'Page URL query parameter "url" is required' });
@@ -13,12 +27,13 @@ exports.getHeatmapData = async (req, res) => {
 
     const decodedUrl = decodeURIComponent(url.trim());
 
-    // Match exact URL or relaxed path match
     const filter = {
+      siteId,
       pageUrl: decodedUrl,
-      eventType: 'click',
+      eventType: { $in: ['click', 'rage_click'] },
       clickX: { $ne: null },
       clickY: { $ne: null },
+      ...buildDateFilter(startDate, endDate, 'timestamp'),
     };
 
     const clicks = await Event.find(filter, {
@@ -32,12 +47,11 @@ exports.getHeatmapData = async (req, res) => {
       elementId: 1,
       elementClass: 1,
       elementText: 1,
+      eventType: 1,
       timestamp: 1,
       sessionId: 1,
     }).sort({ timestamp: -1 });
 
-    // Calculate aggregated click points / clusters
-    // Also provide normalized (0 - 100%) coordinates where viewportWidth/Height are available
     const points = clicks.map((c) => {
       let percentX = null;
       let percentY = null;
@@ -58,6 +72,7 @@ exports.getHeatmapData = async (req, res) => {
         viewportHeight: c.viewportHeight,
         elementTag: c.elementTag,
         elementText: c.elementText,
+        isRageClick: c.eventType === 'rage_click',
         timestamp: c.timestamp,
         sessionId: c.sessionId,
       };
@@ -78,11 +93,20 @@ exports.getHeatmapData = async (req, res) => {
   }
 };
 
-// @desc    Fetch list of tracked pages with visit counts
-// @route   GET /api/analytics/pages
+// @desc    Fetch list of tracked pages with visit counts for a site
+// @route   GET /api/analytics/pages?siteId=...
 exports.getTrackedPages = async (req, res) => {
   try {
+    const siteId = req.site.siteId;
+    const { startDate, endDate } = req.query;
+
+    const matchStage = {
+      siteId,
+      ...buildDateFilter(startDate, endDate, 'timestamp'),
+    };
+
     const pageStats = await Event.aggregate([
+      { $match: matchStage },
       {
         $group: {
           _id: '$pageUrl',
@@ -91,7 +115,10 @@ exports.getTrackedPages = async (req, res) => {
             $sum: { $cond: [{ $eq: ['$eventType', 'page_view'] }, 1, 0] },
           },
           clicks: {
-            $sum: { $cond: [{ $eq: ['$eventType', 'click'] }, 1, 0] },
+            $sum: { $cond: [{ $in: ['$eventType', ['click', 'rage_click']] }, 1, 0] },
+          },
+          rageClicks: {
+            $sum: { $cond: [{ $eq: ['$eventType', 'rage_click'] }, 1, 0] },
           },
           lastTracked: { $max: '$timestamp' },
         },
@@ -103,6 +130,7 @@ exports.getTrackedPages = async (req, res) => {
           totalEvents: 1,
           pageViews: 1,
           clicks: 1,
+          rageClicks: 1,
           lastTracked: 1,
         },
       },
@@ -120,28 +148,42 @@ exports.getTrackedPages = async (req, res) => {
   }
 };
 
-// @desc    Fetch high-level overview metrics & KPIs
-// @route   GET /api/analytics/overview
+// @desc    Fetch high-level overview metrics & KPIs for a site (with date range & bounce rate)
+// @route   GET /api/analytics/overview?siteId=...
 exports.getOverviewStats = async (req, res) => {
   try {
+    const siteId = req.site.siteId;
+    const { startDate, endDate } = req.query;
+
+    const eventMatch = { siteId, ...buildDateFilter(startDate, endDate, 'timestamp') };
+    const sessionMatch = { siteId, ...buildDateFilter(startDate, endDate, 'lastActive') };
+
     const [
       totalSessions,
+      bouncedSessions,
       totalEvents,
       pageViewsCount,
       clicksCount,
+      rageClicksCount,
+      scrollEventsCount,
       topPages,
       sessionsAggregate,
     ] = await Promise.all([
-      Session.countDocuments(),
-      Event.countDocuments(),
-      Event.countDocuments({ eventType: 'page_view' }),
-      Event.countDocuments({ eventType: 'click' }),
+      Session.countDocuments(sessionMatch),
+      Session.countDocuments({ ...sessionMatch, pageViews: { $lte: 1 } }),
+      Event.countDocuments(eventMatch),
+      Event.countDocuments({ ...eventMatch, eventType: 'page_view' }),
+      Event.countDocuments({ ...eventMatch, eventType: { $in: ['click', 'rage_click'] } }),
+      Event.countDocuments({ ...eventMatch, eventType: 'rage_click' }),
+      Event.countDocuments({ ...eventMatch, eventType: 'scroll' }),
       Event.aggregate([
+        { $match: eventMatch },
         {
           $group: {
             _id: '$pageUrl',
             views: { $sum: { $cond: [{ $eq: ['$eventType', 'page_view'] }, 1, 0] } },
-            clicks: { $sum: { $cond: [{ $eq: ['$eventType', 'click'] }, 1, 0] } },
+            clicks: { $sum: { $cond: [{ $in: ['$eventType', ['click', 'rage_click']] }, 1, 0] } },
+            rageClicks: { $sum: { $cond: [{ $eq: ['$eventType', 'rage_click'] }, 1, 0] } },
             total: { $sum: 1 },
           },
         },
@@ -153,11 +195,13 @@ exports.getOverviewStats = async (req, res) => {
             url: '$_id',
             views: 1,
             clicks: 1,
+            rageClicks: 1,
             total: 1,
           },
         },
       ]),
       Session.aggregate([
+        { $match: sessionMatch },
         {
           $project: {
             durationSeconds: {
@@ -182,6 +226,9 @@ exports.getOverviewStats = async (req, res) => {
     const avgEventsPerSession = sessionsAggregate[0]?.avgEventsPerSession
       ? Math.round(sessionsAggregate[0].avgEventsPerSession * 10) / 10
       : 0;
+    const bounceRate = totalSessions > 0
+      ? Math.round((bouncedSessions / totalSessions) * 100)
+      : 0;
 
     return res.json({
       success: true,
@@ -190,6 +237,9 @@ exports.getOverviewStats = async (req, res) => {
         totalEvents,
         pageViews: pageViewsCount,
         clicks: clicksCount,
+        rageClicks: rageClicksCount,
+        scrollEvents: scrollEventsCount,
+        bounceRate,
         avgDurationSeconds: avgDuration,
         avgEventsPerSession,
       },
@@ -201,12 +251,63 @@ exports.getOverviewStats = async (req, res) => {
   }
 };
 
-// @desc    Reset all analytics data (clean slate)
-// @route   DELETE /api/analytics/reset
+// @desc    Export sessions or events as CSV or JSON for a site
+// @route   GET /api/analytics/export?siteId=...&format=csv|json
+exports.exportAnalyticsData = async (req, res) => {
+  try {
+    const siteId = req.site.siteId;
+    const format = (req.query.format || 'csv').toLowerCase();
+
+    const sessions = await Session.find({ siteId }).sort({ lastActive: -1 }).limit(1000);
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="causalfunnel-${siteId}-sessions.json"`);
+      return res.send(JSON.stringify(sessions, null, 2));
+    }
+
+    // Build CSV
+    const headers = ['sessionId', 'startTime', 'lastActive', 'durationSeconds', 'totalEvents', 'pageViews', 'clicks', 'pagesVisited'];
+    const escapeCsv = (val) => {
+      const str = String(val ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const rows = sessions.map((s) =>
+      [
+        s.sessionId,
+        s.startTime?.toISOString() || '',
+        s.lastActive?.toISOString() || '',
+        s.durationSeconds || 0,
+        s.totalEvents || 0,
+        s.pageViews || 0,
+        s.clicks || 0,
+        (s.pagesVisited || []).join(' | '),
+      ]
+        .map(escapeCsv)
+        .join(',')
+    );
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="causalfunnel-${siteId}-sessions.csv"`);
+    return res.send(csv);
+  } catch (error) {
+    console.error('Error exporting data:', error);
+    return res.status(500).json({ error: 'Failed to export analytics data' });
+  }
+};
+
+// @desc    Reset all analytics data for a specific site
+// @route   DELETE /api/analytics/reset?siteId=...
 exports.resetAllData = async (req, res) => {
   try {
-    await Promise.all([Event.deleteMany({}), Session.deleteMany({})]);
-    return res.json({ success: true, message: 'All analytics data successfully cleared.' });
+    const siteId = req.site.siteId;
+    await Promise.all([Event.deleteMany({ siteId }), Session.deleteMany({ siteId })]);
+    return res.json({ success: true, message: `All analytics data for site ${siteId} cleared.` });
   } catch (error) {
     console.error('Error clearing data:', error);
     return res.status(500).json({ error: 'Failed to reset data' });

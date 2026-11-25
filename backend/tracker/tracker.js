@@ -1,16 +1,14 @@
 /**
- * CausalFunnel Analytics Tracking Library
- * Lightweight client-side session tracker and event collector.
+ * CausalFunnel Multi-Tenant Analytics Tracking Library (v2.0)
+ * Lightweight client-side session tracker, heatmap, scroll depth & rage-click collector.
  */
 (function (window, document) {
   'use strict';
 
-  // Prevent multiple initializations
   if (window.CausalTracker && window.CausalTracker._initialized) {
     return;
   }
 
-  // Detect script tag configuration
   const currentScript =
     document.currentScript ||
     (function () {
@@ -18,11 +16,22 @@
       return scripts[scripts.length - 1];
     })();
 
-  const scriptEndpoint = currentScript ? currentScript.getAttribute('data-endpoint') : null;
+  // Extract siteId & endpoint from script attributes or src query params
+  let scriptSiteId = currentScript ? currentScript.getAttribute('data-site-id') : null;
+  let scriptEndpoint = currentScript ? currentScript.getAttribute('data-endpoint') : null;
   const scriptAutoTrack = currentScript ? currentScript.getAttribute('data-auto-track') !== 'false' : true;
+  const scriptRespectDnt = currentScript ? currentScript.getAttribute('data-respect-dnt') !== 'false' : true;
 
-  // Defaults
+  if (currentScript && currentScript.src) {
+    try {
+      const urlObj = new URL(currentScript.src, window.location.href);
+      if (!scriptSiteId) scriptSiteId = urlObj.searchParams.get('siteId');
+      if (!scriptEndpoint) scriptEndpoint = `${urlObj.origin}/api/events`;
+    } catch (e) {}
+  }
+
   const CONFIG = {
+    siteId: scriptSiteId || null,
     endpoint: scriptEndpoint || 'http://localhost:5000/api/events',
     sessionKey: 'cf_session_id',
     sessionCookieDays: 1,
@@ -30,7 +39,10 @@
     maxBatchSize: 10,
     autoTrackPageViews: true,
     autoTrackClicks: true,
-    debug: true,
+    autoTrackScroll: true,
+    detectRageClicks: true,
+    respectDnt: scriptRespectDnt,
+    debug: false,
   };
 
   const state = {
@@ -38,11 +50,16 @@
     queue: [],
     batchTimer: null,
     listeners: [],
+    scrollMilestones: new Set(),
+    recentClicks: [],
   };
 
-  /**
-   * UUID v4 Generator
-   */
+  function isDntEnabled() {
+    if (!CONFIG.respectDnt) return false;
+    const dnt = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+    return dnt === '1' || dnt === 'yes';
+  }
+
   function generateUUID() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
@@ -54,9 +71,6 @@
     });
   }
 
-  /**
-   * Cookie Helpers (Fallback if localStorage is blocked)
-   */
   function setCookie(name, value, days) {
     try {
       let expires = '';
@@ -66,9 +80,7 @@
         expires = '; expires=' + date.toUTCString();
       }
       document.cookie = name + '=' + (value || '') + expires + '; path=/; SameSite=Lax';
-    } catch (e) {
-      // Ignore cookie errors
-    }
+    } catch (e) {}
   }
 
   function getCookie(name) {
@@ -80,91 +92,58 @@
         while (c.charAt(0) === ' ') c = c.substring(1, c.length);
         if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
       }
-    } catch (e) {
-      // Ignore cookie errors
-    }
+    } catch (e) {}
     return null;
   }
 
-  /**
-   * Get or Create Session ID
-   * Stored in localStorage with fallback to cookie
-   */
   function initSessionId() {
+    const key = CONFIG.siteId ? `${CONFIG.sessionKey}_${CONFIG.siteId}` : CONFIG.sessionKey;
     let sid = null;
-
-    // 1. Try localStorage
     try {
       if (typeof window.localStorage !== 'undefined') {
-        sid = window.localStorage.getItem(CONFIG.sessionKey);
+        sid = window.localStorage.getItem(key);
       }
-    } catch (e) {
-      // LocalStorage access might be restricted in some contexts
-    }
+    } catch (e) {}
 
-    // 2. Fallback to Cookie
-    if (!sid) {
-      sid = getCookie(CONFIG.sessionKey);
-    }
+    if (!sid) sid = getCookie(key);
 
-    // 3. Generate new session ID if none found
     if (!sid) {
       sid = 'cf_' + generateUUID();
       try {
         if (typeof window.localStorage !== 'undefined') {
-          window.localStorage.setItem(CONFIG.sessionKey, sid);
+          window.localStorage.setItem(key, sid);
         }
       } catch (e) {}
-      setCookie(CONFIG.sessionKey, sid, CONFIG.sessionCookieDays);
+      setCookie(key, sid, CONFIG.sessionCookieDays);
     }
 
     state.sessionId = sid;
     return sid;
   }
 
-  /**
-   * Send events payload to backend API
-   */
   function sendPayload(events) {
     if (!events || events.length === 0) return;
-
     const payload = JSON.stringify(events);
     const endpoint = CONFIG.endpoint;
 
-    // 1. Try navigator.sendBeacon (ideal for analytics, doesn't block unloads)
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       try {
         const blob = new Blob([payload], { type: 'application/json' });
         const success = navigator.sendBeacon(endpoint, blob);
-        if (success) {
-          if (CONFIG.debug) console.log('[CausalTracker] Sent via sendBeacon:', events.length, 'events');
-          return;
-        }
-      } catch (e) {
-        // Fallback to fetch
-      }
+        if (success) return;
+      } catch (e) {}
     }
 
-    // 2. Fetch with keepalive
     if (typeof fetch === 'function') {
       fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true,
-      })
-        .then((res) => {
-          if (CONFIG.debug) console.log('[CausalTracker] Sent via fetch:', events.length, 'events');
-        })
-        .catch((err) => {
-          if (CONFIG.debug) console.warn('[CausalTracker] Delivery failed:', err.message);
-        });
+      }).catch(() => {});
       return;
     }
 
-    // 3. Fallback to XMLHttpRequest
     try {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', endpoint, true);
@@ -173,56 +152,45 @@
     } catch (e) {}
   }
 
-  /**
-   * Flush queue immediately
-   */
   function flush() {
     if (state.batchTimer) {
       clearTimeout(state.batchTimer);
       state.batchTimer = null;
     }
-
     if (state.queue.length === 0) return;
-
     const toSend = state.queue.slice();
     state.queue = [];
     sendPayload(toSend);
   }
 
-  /**
-   * Queue event for delivery
-   */
   function queueEvent(eventData) {
     state.queue.push(eventData);
-
-    // Notify local in-page listeners (e.g., debug HUDs or demo inspector)
     for (const listener of state.listeners) {
       try {
         listener(eventData);
       } catch (e) {}
     }
-
-    // If max batch size reached, flush immediately
     if (state.queue.length >= CONFIG.maxBatchSize) {
       flush();
       return;
     }
-
-    // Schedule delayed flush
     if (!state.batchTimer) {
       state.batchTimer = setTimeout(flush, CONFIG.batchIntervalMs);
     }
   }
 
-  /**
-   * Track an event
-   */
   function track(eventType, details = {}) {
+    if (isDntEnabled()) return;
+    if (!CONFIG.siteId) {
+      if (CONFIG.debug) console.warn('[CausalTracker] Missing siteId. Skipping event.');
+      return;
+    }
     if (!state.sessionId) {
       initSessionId();
     }
 
     const event = {
+      siteId: CONFIG.siteId,
       sessionId: state.sessionId,
       eventType: String(eventType).toLowerCase(),
       pageUrl: details.pageUrl || window.location.href,
@@ -248,20 +216,14 @@
     queueEvent(event);
   }
 
-  /**
-   * Track page view
-   */
   function trackPageView(pageUrl) {
+    state.scrollMilestones.clear();
     track('page_view', {
       pageUrl: pageUrl || window.location.href,
     });
-    // Flush page view immediately so it registers right away
     flush();
   }
 
-  /**
-   * Global click listener
-   */
   function handleClick(e) {
     try {
       const target = e.target;
@@ -279,25 +241,66 @@
         elementText = target.getAttribute('aria-label').trim().slice(0, 100);
       }
 
-      track('click', {
+      const payload = {
         clickX,
         clickY,
         elementTag: target.tagName || null,
         elementId: target.id || null,
         elementClass: target.className && typeof target.className === 'string' ? target.className : null,
         elementText,
-      });
-    } catch (err) {
-      if (CONFIG.debug) console.warn('[CausalTracker] Click capture error:', err);
-    }
+      };
+
+      // Rage Click Detection: 3+ clicks within 800ms inside a 40px radius
+      if (CONFIG.detectRageClicks) {
+        const now = Date.now();
+        state.recentClicks = state.recentClicks.filter((c) => now - c.t < 800);
+        state.recentClicks.push({ x: clickX, y: clickY, t: now });
+
+        const nearby = state.recentClicks.filter(
+          (c) => Math.hypot(c.x - clickX, c.y - clickY) <= 40
+        );
+
+        if (nearby.length >= 3) {
+          state.recentClicks = []; // Reset after triggering
+          track('rage_click', {
+            ...payload,
+            metadata: { burstCount: nearby.length },
+          });
+          return;
+        }
+      }
+
+      track('click', payload);
+    } catch (err) {}
   }
 
-  /**
-   * SPA Route Change Listeners
-   */
+  function handleScroll() {
+    try {
+      const docHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      );
+      const winHeight = window.innerHeight || document.documentElement.clientHeight;
+      const scrollable = docHeight - winHeight;
+      if (scrollable <= 0) return;
+
+      const scrollTop = window.scrollY || window.pageYOffset || 0;
+      const percent = Math.min(100, Math.round((scrollTop / scrollable) * 100));
+
+      const milestones = [25, 50, 75, 100];
+      for (const m of milestones) {
+        if (percent >= m && !state.scrollMilestones.has(m)) {
+          state.scrollMilestones.add(m);
+          track('scroll', {
+            metadata: { scrollDepthPercent: m },
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
   function setupSPATracking() {
     let lastUrl = window.location.href;
-
     const checkUrlChange = () => {
       const currentUrl = window.location.href;
       if (currentUrl !== lastUrl) {
@@ -306,7 +309,6 @@
       }
     };
 
-    // Monkey-patch pushState & replaceState
     const originalPushState = history.pushState;
     if (originalPushState) {
       history.pushState = function () {
@@ -327,20 +329,31 @@
     window.addEventListener('hashchange', checkUrlChange);
   }
 
-  /**
-   * Initialize Tracker
-   */
   function init(customConfig = {}) {
     Object.assign(CONFIG, customConfig);
-
+    if (isDntEnabled()) return;
     initSessionId();
 
     if (CONFIG.autoTrackClicks) {
       document.addEventListener('click', handleClick, true);
     }
 
+    if (CONFIG.autoTrackScroll) {
+      let scrollTimer = null;
+      window.addEventListener(
+        'scroll',
+        () => {
+          if (scrollTimer) return;
+          scrollTimer = setTimeout(() => {
+            scrollTimer = null;
+            handleScroll();
+          }, 250);
+        },
+        { passive: true }
+      );
+    }
+
     if (CONFIG.autoTrackPageViews) {
-      // Track initial page view
       if (document.readyState === 'complete' || document.readyState === 'interactive') {
         trackPageView();
       } else {
@@ -351,20 +364,14 @@
       setupSPATracking();
     }
 
-    // Flush remaining events before unload
     const unloadHandler = () => flush();
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') flush();
     });
     window.addEventListener('pagehide', unloadHandler);
     window.addEventListener('beforeunload', unloadHandler);
-
-    if (CONFIG.debug) {
-      console.log(`[CausalTracker] Initialized with session: ${state.sessionId}`);
-    }
   }
 
-  // Public API
   const CausalTracker = {
     _initialized: true,
     init,
@@ -372,11 +379,13 @@
     trackPageView,
     flush,
     getSessionId: () => state.sessionId,
+    getSiteId: () => CONFIG.siteId,
     resetSession: () => {
+      const key = CONFIG.siteId ? `${CONFIG.sessionKey}_${CONFIG.siteId}` : CONFIG.sessionKey;
       try {
-        window.localStorage.removeItem(CONFIG.sessionKey);
+        window.localStorage.removeItem(key);
       } catch (e) {}
-      setCookie(CONFIG.sessionKey, '', -1);
+      setCookie(key, '', -1);
       state.sessionId = null;
       return initSessionId();
     },
@@ -387,8 +396,7 @@
 
   window.CausalTracker = CausalTracker;
 
-  // Auto-init if enabled
-  if (scriptAutoTrack) {
+  if (scriptAutoTrack && CONFIG.siteId) {
     init();
   }
 })(window, document);

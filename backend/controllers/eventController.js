@@ -1,17 +1,38 @@
 const Event = require('../models/Event');
 const Session = require('../models/Session');
+const Site = require('../models/Site');
 
-// Helper to update session document based on event
+// Mask IP address for privacy compliance (GDPR-friendly: zero out last octet)
+const anonymizeIp = (rawIp) => {
+  if (!rawIp || rawIp === 'Unknown') return 'Unknown';
+  const ip = String(rawIp).split(',')[0].trim();
+  if (ip.includes('.')) {
+    const parts = ip.split('.');
+    if (parts.length === 4) {
+      parts[3] = '0';
+      return parts.join('.');
+    }
+  }
+  if (ip.includes(':')) {
+    const parts = ip.split(':');
+    return parts.slice(0, 4).join(':') + '::';
+  }
+  return 'Anonymized';
+};
+
+// Helper to update session document based on event (scoped by siteId + sessionId)
 const updateSessionData = async (event, req) => {
-  const { sessionId, eventType, pageUrl, timestamp } = event;
+  const { siteId, sessionId, eventType, pageUrl, timestamp } = event;
   const eventTime = timestamp ? new Date(timestamp) : new Date();
 
   const userAgent = req.headers['user-agent'] || 'Unknown';
-  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'Unknown';
+  const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'Unknown';
+  const ip = anonymizeIp(rawIp);
 
   const updateFields = {
     $set: { lastActive: eventTime },
     $setOnInsert: {
+      siteId,
       sessionId,
       startTime: eventTime,
       userAgent,
@@ -23,18 +44,18 @@ const updateSessionData = async (event, req) => {
 
   if (eventType === 'page_view') {
     updateFields.$inc.pageViews = 1;
-  } else if (eventType === 'click') {
+  } else if (eventType === 'click' || eventType === 'rage_click') {
     updateFields.$inc.clicks = 1;
   }
 
   await Session.findOneAndUpdate(
-    { sessionId },
+    { siteId, sessionId },
     updateFields,
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 };
 
-// @desc    Receive and store events (single or batch)
+// @desc    Receive and store events (single or batch) from tracker.js
 // @route   POST /api/events
 exports.receiveEvents = async (req, res) => {
   try {
@@ -53,16 +74,45 @@ exports.receiveEvents = async (req, res) => {
       return res.status(400).json({ error: 'Request body cannot be empty' });
     }
 
-    // Support both single event object and array of events
     const rawEvents = Array.isArray(payload) ? payload : [payload];
-
     if (rawEvents.length === 0) {
       return res.status(400).json({ error: 'No events provided in array' });
+    }
+
+    // Determine siteId from query param, header, or first event
+    const fallbackSiteId = req.query.siteId || req.headers['x-site-id'] || rawEvents[0]?.siteId;
+
+    // Collect unique siteIds in this batch and verify they exist & are active
+    const candidateSiteIds = [
+      ...new Set(
+        rawEvents
+          .map((ev) => ev.siteId || fallbackSiteId)
+          .filter(Boolean)
+          .map((s) => String(s).trim())
+      ),
+    ];
+
+    if (candidateSiteIds.length === 0) {
+      return res.status(400).json({
+        error: 'siteId is required. Pass data-site-id on your tracker script or siteId in payload.',
+      });
+    }
+
+    const validSites = await Site.find({
+      siteId: { $in: candidateSiteIds },
+      isActive: true,
+    }).select('siteId');
+
+    const validSiteIdSet = new Set(validSites.map((s) => s.siteId));
+
+    if (validSiteIdSet.size === 0) {
+      return res.status(403).json({ error: 'Invalid or inactive siteId' });
     }
 
     const validatedEvents = [];
 
     for (const item of rawEvents) {
+      const itemSiteId = String(item.siteId || fallbackSiteId || '').trim();
       const {
         sessionId,
         eventType,
@@ -81,12 +131,12 @@ exports.receiveEvents = async (req, res) => {
         metadata,
       } = item;
 
-      // Validation
-      if (!sessionId || !eventType || !pageUrl) {
-        continue; // Skip malformed item
+      if (!itemSiteId || !validSiteIdSet.has(itemSiteId) || !sessionId || !eventType || !pageUrl) {
+        continue;
       }
 
       const eventDoc = {
+        siteId: itemSiteId,
         sessionId: String(sessionId).trim(),
         eventType: String(eventType).trim().toLowerCase(),
         pageUrl: String(pageUrl).trim(),
@@ -109,14 +159,12 @@ exports.receiveEvents = async (req, res) => {
 
     if (validatedEvents.length === 0) {
       return res.status(400).json({
-        error: 'Validation failed: every event must have sessionId, eventType, and pageUrl',
+        error: 'Validation failed: every event must have a valid siteId, sessionId, eventType, and pageUrl',
       });
     }
 
-    // Insert events into DB
     const insertedEvents = await Event.insertMany(validatedEvents);
 
-    // Update Session aggregates in parallel
     await Promise.all(
       validatedEvents.map((ev) => updateSessionData(ev, req))
     );
@@ -136,12 +184,13 @@ exports.receiveEvents = async (req, res) => {
   }
 };
 
-// @desc    Get recent events stream
-// @route   GET /api/events
+// @desc    Get recent events stream for a specific site
+// @route   GET /api/events?siteId=...
 exports.getRecentEvents = async (req, res) => {
   try {
+    const siteId = req.site.siteId;
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-    const events = await Event.find()
+    const events = await Event.find({ siteId })
       .sort({ timestamp: -1 })
       .limit(limit);
 

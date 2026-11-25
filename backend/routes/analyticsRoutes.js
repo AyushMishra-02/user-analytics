@@ -4,31 +4,41 @@ const {
   getHeatmapData,
   getTrackedPages,
   getOverviewStats,
+  exportAnalyticsData,
   resetAllData,
 } = require('../controllers/analyticsController');
 const { seedDatabase } = require('../seed/seedData');
+const { protect, verifySiteAccess } = require('../middleware/authMiddleware');
 
-// GET /api/analytics/heatmap - Fetch click data for a page (for heatmap)
+router.use(protect, verifySiteAccess);
+
+// GET /api/analytics/heatmap?siteId=...&url=...
 router.get('/heatmap', getHeatmapData);
 
-// GET /api/analytics/pages - Fetch list of unique tracked pages
+// GET /api/analytics/pages?siteId=...
 router.get('/pages', getTrackedPages);
 
-// GET /api/analytics/overview - Fetch overall metrics (sessions, events, views, clicks)
+// GET /api/analytics/overview?siteId=...
 router.get('/overview', getOverviewStats);
 
-// POST /api/analytics/seed - Seed realistic demo sessions and events
+// GET /api/analytics/export?siteId=...&format=csv|json
+router.get('/export', exportAnalyticsData);
+
+// POST /api/analytics/seed?siteId=...
 router.post('/seed', async (req, res) => {
   try {
-    await seedDatabase();
-    return res.json({ success: true, message: 'Database successfully seeded with realistic demo data.' });
+    await seedDatabase(req.site.siteId);
+    return res.json({
+      success: true,
+      message: `Database seeded with realistic demo data for site ${req.site.name}.`,
+    });
   } catch (error) {
     console.error('Seed error:', error);
     return res.status(500).json({ error: 'Failed to seed database', details: error.message });
   }
 });
 
-// DELETE /api/analytics/reset - Clean slate
+// DELETE /api/analytics/reset?siteId=...
 router.delete('/reset', resetAllData);
 
 module.exports = router;

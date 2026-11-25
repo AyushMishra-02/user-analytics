@@ -2,10 +2,15 @@ const mongoose = require('mongoose');
 
 const SessionSchema = new mongoose.Schema(
   {
+    siteId: {
+      type: String,
+      required: true,
+      index: true,
+      trim: true,
+    },
     sessionId: {
       type: String,
       required: true,
-      unique: true,
       index: true,
       trim: true,
     },
@@ -55,6 +60,9 @@ SessionSchema.virtual('durationSeconds').get(function () {
   if (!this.startTime || !this.lastActive) return 0;
   return Math.max(0, Math.round((new Date(this.lastActive) - new Date(this.startTime)) / 1000));
 });
+
+SessionSchema.index({ siteId: 1, sessionId: 1 }, { unique: true });
+SessionSchema.index({ siteId: 1, lastActive: -1 });
 
 SessionSchema.set('toJSON', { virtuals: true });
 SessionSchema.set('toObject', { virtuals: true });

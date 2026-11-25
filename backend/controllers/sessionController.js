@@ -1,23 +1,37 @@
 const Session = require('../models/Session');
 const Event = require('../models/Event');
 
-// @desc    Fetch a list of sessions with event counts
-// @route   GET /api/sessions
+// @desc    Fetch a list of sessions for a site with event counts & optional date filter
+// @route   GET /api/sessions?siteId=...
 exports.getSessions = async (req, res) => {
   try {
+    const siteId = req.site.siteId;
     const {
       page = 1,
       limit = 50,
       sortBy = 'lastActive',
       order = 'desc',
       search = '',
+      startDate,
+      endDate,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
     const sortOrder = order === 'asc' ? 1 : -1;
 
-    const filter = {};
+    const filter = { siteId };
+
+    if (startDate || endDate) {
+      filter.lastActive = {};
+      if (startDate) filter.lastActive.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.lastActive.$lte = end;
+      }
+    }
+
     if (search && search.trim() !== '') {
       const q = search.trim();
       filter.$or = [
@@ -54,27 +68,24 @@ exports.getSessions = async (req, res) => {
   }
 };
 
-// @desc    Fetch all events for a specific session (User Journey)
-// @route   GET /api/sessions/:sessionId
+// @desc    Fetch all events for a specific session (User Journey) scoped to site
+// @route   GET /api/sessions/:sessionId?siteId=...
 exports.getSessionEvents = async (req, res) => {
   try {
+    const siteId = req.site.siteId;
     const { sessionId } = req.params;
 
     if (!sessionId) {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
-    // Find session summary
-    const session = await Session.findOne({ sessionId });
-
-    // Fetch all events for this session, strictly in chronological order
-    const events = await Event.find({ sessionId }).sort({ timestamp: 1 });
+    const session = await Session.findOne({ siteId, sessionId });
+    const events = await Event.find({ siteId, sessionId }).sort({ timestamp: 1 });
 
     if (!session && events.length === 0) {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Calculate time offsets from the very first event
     const firstEventTime = events.length > 0 ? new Date(events[0].timestamp).getTime() : 0;
 
     const timeline = events.map((event, index) => {
@@ -91,6 +102,7 @@ exports.getSessionEvents = async (req, res) => {
     return res.json({
       success: true,
       session: session || {
+        siteId,
         sessionId,
         startTime: events[0]?.timestamp,
         lastActive: events[events.length - 1]?.timestamp,
